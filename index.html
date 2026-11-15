@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ProArtists · MusicVibe</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23ec4899' d='M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z'/%3E%3C/svg%3E">
+  <!-- Shared look + login live in the MusicVibe repo (same github.io origin). -->
+  <link rel="stylesheet" href="/MusicVibe/css/style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="./">
+    <span class="logo"><svg viewBox="0 0 24 24"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg></span>
+    ProArtists
+  </a>
+  <div class="right">
+    <a class="btn ghost small" href="/MusicVibe/app.html">MusicVibe</a>
+    <span class="avatar" id="avatar"></span>
+    <button class="btn ghost small" id="signout">Sign out</button>
+  </div>
+</header>
+
+<main class="container" id="main" hidden>
+  <section class="panel">
+    <h2>Artist studio</h2>
+    <p class="muted" style="margin:0">Signed in as <strong id="name"></strong> (@<span id="username"></span>)</p>
+  </section>
+
+  <section class="panel">
+    <h2>Coming next</h2>
+    <div class="grid">
+      <div class="tile">Create artist profile</div>
+      <div class="tile">Upload songs</div>
+      <div class="tile">Edit / delete songs</div>
+      <div class="tile">Collaborators + permissions</div>
+    </div>
+  </section>
+</main>
+
+<script type="module">
+  import { requireUser, signOut } from "/MusicVibe/core/mv.js";
+
+  // Not signed in -> MusicVibe's sign-in page, then straight back here.
+  const { profile } = await requireUser();
+  const $ = (s) => document.querySelector(s);
+  $("#name").textContent = profile.displayName;
+  $("#username").textContent = profile.username;
+  const av = $("#avatar");
+  if (profile.photoURL) {
+    const img = new Image(); img.src = profile.photoURL; img.alt = ""; img.referrerPolicy = "no-referrer"; av.append(img);
+  } else av.textContent = profile.displayName[0].toUpperCase();
+  $("#signout").onclick = async () => { await signOut(); location.replace("/MusicVibe/"); };
+  $("#main").hidden = false;
+</script>
+</body>
+</html>
