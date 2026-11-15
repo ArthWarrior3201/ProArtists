@@ -44,12 +44,12 @@
   // Not signed in -> MusicVibe's sign-in page, then straight back here.
   const { profile } = await requireUser();
   const $ = (s) => document.querySelector(s);
-  $("#name").textContent = profile.displayName;
+  $("#name").textContent = profile.display_name;
   $("#username").textContent = profile.username;
   const av = $("#avatar");
-  if (profile.photoURL) {
-    const img = new Image(); img.src = profile.photoURL; img.alt = ""; img.referrerPolicy = "no-referrer"; av.append(img);
-  } else av.textContent = profile.displayName[0].toUpperCase();
+  if (profile.avatar_url) {
+    const img = new Image(); img.src = profile.avatar_url; img.alt = ""; img.referrerPolicy = "no-referrer"; av.append(img);
+  } else av.textContent = profile.display_name[0].toUpperCase();
   $("#signout").onclick = async () => { await signOut(); location.replace("/MusicVibe/"); };
   $("#main").hidden = false;
 </script>
