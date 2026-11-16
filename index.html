@@ -4,147 +4,117 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ProArtists · MusicVibe</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23ec4899' d='M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/png" sizes="64x64" href="/MusicVibe/img/favicon-64.png">
+  <link rel="apple-touch-icon" href="/MusicVibe/img/logo-192.png">
   <!-- Shared look + login live in the MusicVibe repo (same github.io origin). -->
   <link rel="stylesheet" href="/MusicVibe/css/style.css">
-  <style>
-    .upload-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .upload-row input[type=file] { flex: 1; min-width: 0; color: var(--muted); }
-    .media-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-    .media-list li.item { background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 8px; }
-    .media-list .top { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
-    .media-list .name { font-weight: 600; overflow-wrap: anywhere; }
-    .media-list audio { width: 100%; }
-  </style>
+  <link rel="stylesheet" href="css/studio.css">
 </head>
 <body>
 <header class="topbar">
   <a class="brand" href="./">
-    <span class="logo"><svg viewBox="0 0 24 24"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/></svg></span>
+    <img class="logo" src="/MusicVibe/img/logo-192.png" alt="" width="34" height="34">
     ProArtists
   </a>
   <div class="right">
     <a class="btn ghost small" href="/MusicVibe/app.html">MusicVibe</a>
-    <span class="avatar" id="avatar"></span>
     <button class="btn ghost small" id="signout">Sign out</button>
   </div>
 </header>
 
 <main class="container" id="main" hidden>
-  <section class="panel">
-    <h2>Artist studio</h2>
-    <p class="muted" style="margin:0">Signed in as <strong id="name"></strong> (@<span id="username"></span>)</p>
+  <div class="alert" id="alert" role="alert" style="margin-bottom:16px"></div>
+
+  <!-- ARTIST PROFILE: create / edit -->
+  <section class="panel" id="profile-form-panel" hidden>
+    <h2 id="profile-form-title">Create your artist profile</h2>
+    <p class="muted" style="margin-top:0">This is what listeners see on your artist page and on every song you release.</p>
+    <form id="profile-form" novalidate>
+      <div class="photo-row">
+        <label class="photo-pick" title="Choose a photo">
+          <span id="photo-preview"></span>
+          <input type="file" name="photo" accept=".jpg,.jpeg,.png,.webp,image/*" hidden>
+          <span class="photo-hint">Change photo</span>
+        </label>
+        <div class="grow">
+          <label>Artist name
+            <input type="text" name="name" maxlength="60" required>
+          </label>
+        </div>
+      </div>
+      <label>Description <span class="muted">(optional)</span>
+        <textarea name="bio" maxlength="1500" placeholder="Tell listeners who you are, your sound, your story…"></textarea>
+        <span class="hint" data-count>0 / 1500</span>
+      </label>
+      <div class="row-btns">
+        <button class="btn primary small" type="submit">Save profile</button>
+        <button class="btn ghost small" type="button" id="profile-cancel" hidden>Cancel</button>
+      </div>
+    </form>
   </section>
 
-  <section class="panel">
-    <h2>Upload audio</h2>
-    <p class="muted" style="margin-top:0">mp3, wav, flac, m4a, aac, ogg, opus or webm · up to 300 MB</p>
-    <div class="alert" id="upload-alert" role="alert" style="margin-bottom:12px"></div>
-    <div class="upload-row">
-      <input type="file" id="file" accept=".mp3,.wav,.flac,.m4a,.aac,.ogg,.opus,.webm,audio/*">
-      <button class="btn primary small" id="upload-btn" disabled>Upload</button>
-    </div>
-    <div id="progress-wrap" hidden style="margin-top:12px">
-      <div class="pw-meter" style="height:8px"><span id="progress-bar" style="background:linear-gradient(90deg,var(--accent),var(--accent-2))"></span></div>
-      <p class="hint" id="progress-text" style="margin:6px 0 0"></p>
+  <!-- ARTIST PROFILE: view -->
+  <section class="panel" id="profile-panel" hidden>
+    <div class="profile-view">
+      <span id="profile-avatar"></span>
+      <div class="grow">
+        <div class="eyebrow">Your artist profile</div>
+        <h2 id="profile-name" style="margin:2px 0 4px"></h2>
+        <p class="muted clamp" id="profile-bio"></p>
+      </div>
+      <div class="row-btns">
+        <a class="btn ghost small" id="profile-link">View page</a>
+        <button class="btn ghost small" id="profile-edit">Edit</button>
+      </div>
     </div>
   </section>
 
-  <section class="panel">
-    <h2>Your uploads</h2>
-    <ul class="media-list" id="media-list"><li class="muted">Loading…</li></ul>
+  <!-- RELEASE A SONG -->
+  <section class="panel" id="release-panel" hidden>
+    <h2>Release a song</h2>
+    <form id="release-form" novalidate>
+      <label>Title
+        <input type="text" name="title" maxlength="120" required>
+      </label>
+      <div class="two-col">
+        <label>Audio file
+          <input type="file" name="audio" accept=".mp3,.wav,.flac,.m4a,.aac,.ogg,.opus,.webm,audio/*" required>
+          <span class="hint">mp3, wav, flac, m4a, aac, ogg, opus or webm · up to 300 MB</span>
+        </label>
+        <label>Cover <span class="muted">(optional, uses your photo otherwise)</span>
+          <input type="file" name="cover" accept=".jpg,.jpeg,.png,.webp,image/*">
+        </label>
+      </div>
+
+      <div>
+        <div class="label-like">Credits</div>
+        <p class="hint" style="margin:2px 0 10px">You're the main artist. Add everyone else who worked on it: search ProArtists, or just type a name.</p>
+        <div id="credit-rows" class="credit-rows"></div>
+        <div class="credit-add">
+          <input type="text" id="credit-search" placeholder="Search artists or type a name…" autocomplete="off">
+          <div class="search-results" id="search-results" hidden></div>
+        </div>
+      </div>
+
+      <div id="release-progress" hidden>
+        <div class="pw-meter" style="height:8px"><span id="release-bar" style="background:linear-gradient(90deg,var(--accent),var(--accent-2))"></span></div>
+        <p class="hint" id="release-text" style="margin:6px 0 0"></p>
+      </div>
+      <button class="btn primary" type="submit">Release song</button>
+    </form>
   </section>
 
-  <section class="panel">
-    <h2>Coming next</h2>
-    <div class="grid">
-      <div class="tile">Create artist profile</div>
-      <div class="tile">Songs (title, cover, release)</div>
-      <div class="tile">Collaborators + permissions</div>
-    </div>
+  <section class="panel" id="songs-panel" hidden>
+    <h2>Your songs</h2>
+    <ul class="studio-songs" id="my-songs"></ul>
+  </section>
+
+  <section class="panel" id="collab-panel" hidden>
+    <h2>Songs you're on</h2>
+    <ul class="studio-songs" id="collab-songs"></ul>
   </section>
 </main>
 
-<script type="module">
-  import {
-    requireUser, signOut, uploadAudio, listMyMedia, deleteMedia, mediaUrl, isApiConfigured, friendlyError,
-  } from "/MusicVibe/core/mv.js";
-
-  // Not signed in -> MusicVibe's sign-in page, then straight back here.
-  const { profile } = await requireUser();
-  const $ = (s) => document.querySelector(s);
-  $("#name").textContent = profile.display_name;
-  $("#username").textContent = profile.username;
-  const av = $("#avatar");
-  if (profile.avatar_url) {
-    const img = new Image(); img.src = profile.avatar_url; img.alt = ""; img.referrerPolicy = "no-referrer"; av.append(img);
-  } else av.textContent = profile.display_name[0].toUpperCase();
-  $("#signout").onclick = async () => { await signOut(); location.replace("/MusicVibe/"); };
-  $("#main").hidden = false;
-
-  // ---------- uploads ----------
-  const alertBox = $("#upload-alert");
-  const say = (msg, kind = "error") => { alertBox.className = "alert" + (msg ? ` show ${kind}` : ""); alertBox.textContent = msg; };
-  const fmtSize = (b) => b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.ceil(b / 1024)} KB`;
-
-  if (!isApiConfigured) say("Storage isn't connected yet. Set API_BASE in MusicVibe/core/supabase-config.js.", "warn");
-
-  $("#file").onchange = () => { $("#upload-btn").disabled = !$("#file").files.length || !isApiConfigured; say(""); };
-
-  $("#upload-btn").onclick = async () => {
-    const file = $("#file").files[0];
-    if (!file) return;
-    if (file.size > 300 * 1024 * 1024) return say("That file is over 300 MB.");
-    $("#upload-btn").disabled = true;
-    $("#progress-wrap").hidden = false;
-    const setP = (p) => {
-      $("#progress-bar").style.width = `${Math.round(p * 100)}%`;
-      $("#progress-text").textContent = p < 1 ? `Uploading ${file.name}… ${Math.round(p * 100)}%` : "Saving…";
-    };
-    setP(0);
-    try {
-      await uploadAudio(file, { onProgress: setP });
-      say(`Uploaded ${file.name}.`, "info");
-      $("#file").value = "";
-      await refresh();
-    } catch (e) {
-      console.error(e);
-      say(friendlyError(e));
-      $("#upload-btn").disabled = false;
-    } finally {
-      $("#progress-wrap").hidden = true;
-    }
-  };
-
-  async function refresh() {
-    const list = $("#media-list");
-    let items;
-    try { items = await listMyMedia(); }
-    catch (e) { list.innerHTML = ""; list.append(Object.assign(document.createElement("li"), { className: "muted", textContent: friendlyError(e) })); return; }
-    list.innerHTML = "";
-    if (!items.length) list.append(Object.assign(document.createElement("li"), { className: "muted", textContent: "Nothing uploaded yet." }));
-    for (const m of items) {
-      const li = document.createElement("li");
-      li.className = "item";
-      li.dataset.id = m.id;
-      const top = document.createElement("div");
-      top.className = "top";
-      const name = Object.assign(document.createElement("span"), { className: "name", textContent: m.filename });
-      const meta = Object.assign(document.createElement("span"), { className: "muted", textContent: fmtSize(m.size) });
-      const del = Object.assign(document.createElement("button"), { className: "btn ghost small", textContent: "Delete" });
-      del.onclick = async () => {
-        if (!confirm(`Delete ${m.filename}?`)) return;
-        del.disabled = true;
-        try { await deleteMedia(m.id); li.remove(); }
-        catch (e) { say(friendlyError(e)); del.disabled = false; }
-      };
-      top.append(name, meta, del);
-      const audio = Object.assign(document.createElement("audio"), { controls: true, preload: "none", src: mediaUrl(m.id) });
-      li.append(top, audio);
-      list.append(li);
-    }
-  }
-  refresh();
-</script>
+<script type="module" src="js/studio.js"></script>
 </body>
 </html>
