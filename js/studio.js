@@ -204,11 +204,11 @@ rform.addEventListener("submit", (e) => {
       });
       rform.reset();
       resetCredits();
+      await refreshSongs(); // list it before announcing it
       say("", "info");
       const a = $("#alert");
       a.className = "alert show info";
       a.replaceChildren(`"${title}" is out! `, el("a", { href: songUrl(id), textContent: "Open the song page →" }));
-      refreshSongs();
     } finally {
       $("#release-progress").hidden = true;
       bar.style.width = "0";
