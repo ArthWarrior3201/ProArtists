@@ -7,6 +7,15 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23ec4899' d='M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z'/%3E%3C/svg%3E">
   <!-- Shared look + login live in the MusicVibe repo (same github.io origin). -->
   <link rel="stylesheet" href="/MusicVibe/css/style.css">
+  <style>
+    .upload-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .upload-row input[type=file] { flex: 1; min-width: 0; color: var(--muted); }
+    .media-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+    .media-list li.item { background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 8px; }
+    .media-list .top { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+    .media-list .name { font-weight: 600; overflow-wrap: anywhere; }
+    .media-list audio { width: 100%; }
+  </style>
 </head>
 <body>
 <header class="topbar">
@@ -28,18 +37,38 @@
   </section>
 
   <section class="panel">
+    <h2>Upload audio</h2>
+    <p class="muted" style="margin-top:0">mp3, wav, flac, m4a, aac, ogg, opus or webm · up to 300 MB</p>
+    <div class="alert" id="upload-alert" role="alert" style="margin-bottom:12px"></div>
+    <div class="upload-row">
+      <input type="file" id="file" accept=".mp3,.wav,.flac,.m4a,.aac,.ogg,.opus,.webm,audio/*">
+      <button class="btn primary small" id="upload-btn" disabled>Upload</button>
+    </div>
+    <div id="progress-wrap" hidden style="margin-top:12px">
+      <div class="pw-meter" style="height:8px"><span id="progress-bar" style="background:linear-gradient(90deg,var(--accent),var(--accent-2))"></span></div>
+      <p class="hint" id="progress-text" style="margin:6px 0 0"></p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Your uploads</h2>
+    <ul class="media-list" id="media-list"><li class="muted">Loading…</li></ul>
+  </section>
+
+  <section class="panel">
     <h2>Coming next</h2>
     <div class="grid">
       <div class="tile">Create artist profile</div>
-      <div class="tile">Upload songs</div>
-      <div class="tile">Edit / delete songs</div>
+      <div class="tile">Songs (title, cover, release)</div>
       <div class="tile">Collaborators + permissions</div>
     </div>
   </section>
 </main>
 
 <script type="module">
-  import { requireUser, signOut } from "/MusicVibe/core/mv.js";
+  import {
+    requireUser, signOut, uploadAudio, listMyMedia, deleteMedia, mediaUrl, isApiConfigured, friendlyError,
+  } from "/MusicVibe/core/mv.js";
 
   // Not signed in -> MusicVibe's sign-in page, then straight back here.
   const { profile } = await requireUser();
@@ -52,6 +81,70 @@
   } else av.textContent = profile.display_name[0].toUpperCase();
   $("#signout").onclick = async () => { await signOut(); location.replace("/MusicVibe/"); };
   $("#main").hidden = false;
+
+  // ---------- uploads ----------
+  const alertBox = $("#upload-alert");
+  const say = (msg, kind = "error") => { alertBox.className = "alert" + (msg ? ` show ${kind}` : ""); alertBox.textContent = msg; };
+  const fmtSize = (b) => b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.ceil(b / 1024)} KB`;
+
+  if (!isApiConfigured) say("Storage isn't connected yet. Set API_BASE in MusicVibe/core/supabase-config.js.", "warn");
+
+  $("#file").onchange = () => { $("#upload-btn").disabled = !$("#file").files.length || !isApiConfigured; say(""); };
+
+  $("#upload-btn").onclick = async () => {
+    const file = $("#file").files[0];
+    if (!file) return;
+    if (file.size > 300 * 1024 * 1024) return say("That file is over 300 MB.");
+    $("#upload-btn").disabled = true;
+    $("#progress-wrap").hidden = false;
+    const setP = (p) => {
+      $("#progress-bar").style.width = `${Math.round(p * 100)}%`;
+      $("#progress-text").textContent = p < 1 ? `Uploading ${file.name}… ${Math.round(p * 100)}%` : "Saving…";
+    };
+    setP(0);
+    try {
+      await uploadAudio(file, { onProgress: setP });
+      say(`Uploaded ${file.name}.`, "info");
+      $("#file").value = "";
+      await refresh();
+    } catch (e) {
+      console.error(e);
+      say(friendlyError(e));
+      $("#upload-btn").disabled = false;
+    } finally {
+      $("#progress-wrap").hidden = true;
+    }
+  };
+
+  async function refresh() {
+    const list = $("#media-list");
+    let items;
+    try { items = await listMyMedia(); }
+    catch (e) { list.innerHTML = ""; list.append(Object.assign(document.createElement("li"), { className: "muted", textContent: friendlyError(e) })); return; }
+    list.innerHTML = "";
+    if (!items.length) list.append(Object.assign(document.createElement("li"), { className: "muted", textContent: "Nothing uploaded yet." }));
+    for (const m of items) {
+      const li = document.createElement("li");
+      li.className = "item";
+      li.dataset.id = m.id;
+      const top = document.createElement("div");
+      top.className = "top";
+      const name = Object.assign(document.createElement("span"), { className: "name", textContent: m.filename });
+      const meta = Object.assign(document.createElement("span"), { className: "muted", textContent: fmtSize(m.size) });
+      const del = Object.assign(document.createElement("button"), { className: "btn ghost small", textContent: "Delete" });
+      del.onclick = async () => {
+        if (!confirm(`Delete ${m.filename}?`)) return;
+        del.disabled = true;
+        try { await deleteMedia(m.id); li.remove(); }
+        catch (e) { say(friendlyError(e)); del.disabled = false; }
+      };
+      top.append(name, meta, del);
+      const audio = Object.assign(document.createElement("audio"), { controls: true, preload: "none", src: mediaUrl(m.id) });
+      li.append(top, audio);
+      list.append(li);
+    }
+  }
+  refresh();
 </script>
 </body>
 </html>

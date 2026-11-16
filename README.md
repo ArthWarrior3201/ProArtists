@@ -11,7 +11,8 @@ GitHub Pages: Settings → Pages → Deploy from branch → `main` / root.
 
 ## Status
 
-- [x] Shared sign-in
+- [x] Shared sign-in (ProArtists-branded sign-in page + artist email templates)
+- [x] Upload / play / delete audio files (stored via the MV-Storage Vercel API)
 - [ ] Artist profile
-- [ ] Upload / edit / delete songs
+- [ ] Songs (title, cover, release) built on the uploaded files
 - [ ] Collaborators (add / remove per song, permissions)
