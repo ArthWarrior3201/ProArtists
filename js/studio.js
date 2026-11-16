@@ -50,6 +50,7 @@ function showPreview() {
 
 function openProfileForm(editing) {
   $("#profile-form-title").textContent = editing ? "Edit your artist profile" : "Create your artist profile";
+  $("#profile-submit").textContent = editing ? "Save Changes" : "Create Artist Profile";
   pform.elements.name.value = me?.name || profile.display_name;
   pform.elements.bio.value = me?.bio || "";
   pform.elements.bio.dispatchEvent(new Event("input"));
@@ -77,11 +78,12 @@ pform.addEventListener("submit", (e) => {
   e.preventDefault();
   const name = pform.elements.name.value.trim();
   if (!name) return say("Add your artist name.");
-  busy(pform.querySelector("[type=submit]"), "Saving…", async () => {
+  const wasNew = !me;
+  busy(pform.querySelector("[type=submit]"), wasNew ? "Creating…" : "Saving…", async () => {
     let avatarMediaId = me?.avatar_media_id || null;
     if (pickedPhoto) avatarMediaId = (await uploadFile(pickedPhoto)).id;
     me = await saveMyArtist({ name, bio: pform.elements.bio.value, avatarMediaId });
-    say("Artist profile saved.", "info");
+    say(wasNew ? "Your artist profile is live!" : "Artist profile saved.", "info");
     renderProfile();
     refreshSongs();
   });
