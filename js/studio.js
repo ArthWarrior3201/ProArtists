@@ -1,7 +1,7 @@
 import {
   requireUser, signOut, getArtist, saveMyArtist, uploadFile, squareImage, searchArtists,
   createSong, listArtistSongs, listFeaturedOn, deleteSong, mediaUrl, ROLES, isApiConfigured, friendlyError,
-  saveLyrics, cleanLyrics, lyricLines, isSynced,
+  saveLyrics, cleanLyrics, lyricLines, isSynced, normalizeMedia, mediaNeedingFix,
 } from "/MusicVibe/core/mv.js";
 import { el, avatar, artistUrl, songUrl, createPlayer } from "/MusicVibe/core/ui.js";
 
@@ -253,12 +253,36 @@ async function refreshSongs() {
       ? mine.map((s) => songItem(s, { sub: new Date(s.created_at).toLocaleDateString(), canDelete: true }))
       : [el("li", { className: "muted", textContent: "No songs yet. Release your first one above." })]));
     $("#collab-panel").hidden = !featured.length;
+    fixOldSongs(mine);
     $("#collab-songs").replaceChildren(...featured.map((s) => songItem(s, {
       sub: s.credit.roles.map((r) => ROLES[r]).join(", ") + (s.credit.can_edit ? " · can edit" : "") + (s.credit.can_delete ? " · can delete" : ""),
       canDelete: s.credit.can_delete,
       canEdit: s.credit.can_edit,
     })));
   } catch (e) { say(friendlyError(e)); }
+}
+
+// ---------------- loudness fix for songs uploaded before it existed ----------------
+// New uploads are fixed automatically by the API. Older ones get fixed here, one at a
+// time in the background, the first time the owner opens ProArtists.
+let fixing = false;
+async function fixOldSongs(songs) {
+  if (fixing || !isApiConfigured) return;
+  const ids = await mediaNeedingFix(songs.map((s) => s.audio_media_id));
+  if (!ids.length) return;
+  fixing = true;
+  const note = el("p", { className: "hint", style: "margin:0 0 10px" });
+  $("#songs-panel h2").after(note);
+  let done = 0;
+  for (const id of ids) {
+    const song = songs.find((s) => s.audio_media_id === id);
+    note.textContent = `Improving sound quality of “${song?.title || "your song"}” (${done + 1} of ${ids.length})… you can keep using ProArtists.`;
+    try { await normalizeMedia(id); done++; } catch (e) { console.warn("loudness fix failed", id, e); }
+  }
+  note.textContent = done ? `Sound fixed for ${done} song${done === 1 ? "" : "s"}: clean bass, matched loudness.` : "";
+  note.className = "hint ok";
+  setTimeout(() => note.remove(), 8000);
+  fixing = false;
 }
 
 // ---------------- lyrics editor + time-sync tool ----------------
@@ -349,7 +373,7 @@ function openLyricsEditor(song) {
     const tap = el("button", { className: "btn primary sync-tap", type: "button" });
     const undo = el("button", { className: "btn ghost small", type: "button", textContent: "Undo" });
     const restart = el("button", { className: "btn ghost small", type: "button", textContent: "Start over" });
-    const save = el("button", { className: "btn primary small", type: "button", textContent: "Save sync" });
+    const save = el("button", { className: "btn primary small", type: "button", textContent: "Finish" });
     const backBtn = el("button", { className: "btn ghost small", type: "button", textContent: "← Edit text" });
     const msg = el("p", { className: "hint" });
 
