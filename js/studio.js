@@ -1,8 +1,9 @@
 import {
   requireUser, signOut, getArtist, saveMyArtist, uploadFile, squareImage, searchArtists,
   createSong, listArtistSongs, listFeaturedOn, deleteSong, mediaUrl, ROLES, isApiConfigured, friendlyError,
+  saveLyrics, cleanLyrics, lyricLines, isSynced,
 } from "/MusicVibe/core/mv.js";
-import { el, avatar, artistUrl, songUrl } from "/MusicVibe/core/ui.js";
+import { el, avatar, artistUrl, songUrl, createPlayer } from "/MusicVibe/core/ui.js";
 
 // Not signed in -> MusicVibe's sign-in page (artist version), then back here.
 const { user, profile } = await requireUser();
@@ -201,7 +202,7 @@ rform.addEventListener("submit", (e) => {
         onProgress: (p) => { bar.style.width = `${Math.round(p * 100)}%`; text.textContent = p < 1 ? `Uploading audio… ${Math.round(p * 100)}%` : "Saving…"; },
       });
       const id = await createSong({
-        title, audioMediaId: up.id, coverMediaId,
+        title, audioMediaId: up.id, coverMediaId, lyrics: rform.elements.lyrics.value,
         credits: credits.map((c) => ({ artistId: c.artistId, name: c.name, roles: [...c.roles], canEdit: c.canEdit, canDelete: c.canDelete })),
       });
       rform.reset();
@@ -219,12 +220,20 @@ rform.addEventListener("submit", (e) => {
 });
 
 // ---------------- song lists ----------------
-function songItem(song, { sub, canDelete }) {
+function songItem(song, { sub, canDelete, canEdit = canDelete }) {
   const pic = mediaUrl(song.cover_media_id) || mediaUrl(me?.avatar_media_id) || "/MusicVibe/img/logo-192.png";
   const li = el("li", {},
     el("span", { className: "cover-sm" }, el("img", { src: pic, alt: "", loading: "lazy" })),
     el("span", { className: "t" }, el("a", { href: songUrl(song.id), textContent: song.title }), el("small", { textContent: sub })),
   );
+  if (canEdit) {
+    const synced = isSynced(song);
+    const lyr = el("button", { className: "btn ghost small", type: "button",
+      textContent: !song.lyrics ? "Add lyrics" : synced ? "Lyrics ✓" : "Lyrics" });
+    lyr.title = !song.lyrics ? "Add lyrics" : synced ? "Lyrics (time-synced)" : "Lyrics (not time-synced yet)";
+    lyr.onclick = () => openLyricsEditor(song);
+    li.append(lyr);
+  }
   if (canDelete) {
     const del = el("button", { className: "btn ghost small", textContent: "Delete" });
     del.onclick = () => {
@@ -247,8 +256,166 @@ async function refreshSongs() {
     $("#collab-songs").replaceChildren(...featured.map((s) => songItem(s, {
       sub: s.credit.roles.map((r) => ROLES[r]).join(", ") + (s.credit.can_edit ? " · can edit" : "") + (s.credit.can_delete ? " · can delete" : ""),
       canDelete: s.credit.can_delete,
+      canEdit: s.credit.can_edit,
     })));
   } catch (e) { say(friendlyError(e)); }
+}
+
+// ---------------- lyrics editor + time-sync tool ----------------
+let lyricsModal = null;
+function openLyricsEditor(song) {
+  lyricsModal?.close();
+  let text = song.lyrics || "";
+  let times = null; // working sync
+
+  const x = el("button", { className: "share-x", type: "button", title: "Close", textContent: "✕" });
+  const body = el("div", { className: "lyr-body" });
+  const card = el("div", { className: "share-card lyr-card", role: "dialog" }, x, el("h3", { textContent: `Lyrics · ${song.title}` }), body);
+  const back = el("div", { className: "share-backdrop" }, card);
+  let player = null;
+  let onKey = () => {};
+  const keyHandler = (e) => onKey(e);
+  const close = () => { player?.pause(); back.remove(); document.removeEventListener("keydown", keyHandler); lyricsModal = null; };
+  x.onclick = close;
+  document.body.append(back);
+  lyricsModal = { close };
+
+  // ---- step 1: edit text ----
+  function editStep() {
+    player?.pause();
+    onKey = () => {};
+    const ta = el("textarea", { value: text, maxLength: 20000, placeholder: "One line per line. Leave an empty line between verses." });
+    ta.style.minHeight = "300px";
+    const msg = el("p", { className: "hint" });
+    const synced = isSynced(song);
+    const info = el("p", { className: "muted", style: "margin:0 0 10px;font-size:14px",
+      textContent: !song.lyrics ? "Paste or type the lyrics, then save. You can time-sync them next."
+        : synced ? "These lyrics are time-synced. If you change the lines, you'll need to sync them again." : "These lyrics aren't time-synced yet." });
+    const save = el("button", { className: "btn primary small", type: "button", textContent: "Save lyrics" });
+    const sync = el("button", { className: "btn ghost small", type: "button", textContent: "Time-sync →" });
+    const remove = el("button", { className: "btn ghost small", type: "button", textContent: "Remove lyrics" });
+    remove.hidden = !song.lyrics;
+    sync.disabled = !text.trim();
+    ta.oninput = () => { sync.disabled = !ta.value.trim(); };
+    save.onclick = () => busyBtn(save, "Saving…", msg, async () => {
+      const newText = cleanLyrics(ta.value);
+      const keepSync = isSynced(song) && newText === song.lyrics ? song.lyrics_sync : null;
+      Object.assign(song, await saveLyrics(song.id, { lyrics: newText, sync: keepSync }));
+      text = song.lyrics || "";
+      msg.textContent = keepSync || !newText ? "Saved." : "Saved. Not time-synced yet.";
+      msg.className = "hint ok";
+      remove.hidden = !song.lyrics;
+      refreshSongs();
+    });
+    sync.onclick = () => { text = cleanLyrics(ta.value); syncStep(); };
+    remove.onclick = () => {
+      if (!confirm("Remove the lyrics from this song?")) return;
+      busyBtn(remove, "Removing…", msg, async () => { Object.assign(song, await saveLyrics(song.id, { lyrics: "" })); close(); refreshSongs(); });
+    };
+    body.replaceChildren(info, ta, el("div", { className: "row-btns", style: "margin-top:10px" }, save, sync, remove), msg);
+    ta.focus();
+  }
+
+  // ---- step 2: time-sync ----
+  function syncStep() {
+    const lines = lyricLines(text);
+    const targets = lines.map((l, i) => (l.trim() ? i : -1)).filter((i) => i >= 0);
+    const fresh = () => lines.map(() => null);
+    times = isSynced(song) && song.lyrics === text ? [...song.lyrics_sync] : fresh();
+    let k = times.every((t, i) => !lines[i].trim() || t != null) && times.some((t) => t != null) ? targets.length : 0;
+    if (!k) times = fresh();
+
+    if (!player) player = createPlayer();
+    player.load(song);
+    const audio = player.audio;
+    const fmt = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, "0")}`;
+    const list = el("div", { className: "sync-list" });
+    const rows = lines.map((line, i) => {
+      if (!line.trim()) return list.appendChild(el("div", { className: "lyric-gap" }));
+      const time = el("span", { className: "sync-time" });
+      const row = el("button", { className: "sync-row", type: "button" }, time, el("span", { textContent: line }));
+      row.title = "Re-sync from this line";
+      row.onclick = () => { // redo from here
+        const j = targets.indexOf(i);
+        for (let m = j; m < targets.length; m++) times[targets[m]] = null;
+        k = j;
+        const prev = j > 0 ? times[targets[j - 1]] : 0;
+        audio.currentTime = Math.max(0, (prev ?? 0) - 0.5);
+        paint();
+      };
+      row._time = time;
+      return list.appendChild(row);
+    });
+    const tap = el("button", { className: "btn primary sync-tap", type: "button" });
+    const undo = el("button", { className: "btn ghost small", type: "button", textContent: "Undo" });
+    const restart = el("button", { className: "btn ghost small", type: "button", textContent: "Start over" });
+    const save = el("button", { className: "btn primary small", type: "button", textContent: "Save sync" });
+    const backBtn = el("button", { className: "btn ghost small", type: "button", textContent: "← Edit text" });
+    const msg = el("p", { className: "hint" });
+
+    function paint() {
+      rows.forEach((r, i) => {
+        if (!r._time) return;
+        r._time.textContent = times[i] == null ? "–:––" : fmt(times[i]);
+        r.classList.toggle("done", times[i] != null);
+        r.classList.toggle("next", targets[k] === i);
+      });
+      const done = k >= targets.length;
+      tap.textContent = done ? "All lines synced ✓" : `Tap when this starts: “${lines[targets[k]].slice(0, 40)}${lines[targets[k]].length > 40 ? "…" : ""}”`;
+      tap.disabled = done;
+      save.disabled = !done;
+      undo.disabled = k === 0;
+      const nextRow = rows[targets[Math.min(k, targets.length - 1)]];
+      if (nextRow) list.scrollTo({ top: nextRow.offsetTop - list.clientHeight / 2, behavior: "smooth" });
+    }
+    function doTap() {
+      if (k >= targets.length) return;
+      if (audio.paused) { player.play(); return; } // first tap starts the song
+      const prev = k > 0 ? times[targets[k - 1]] : -1;
+      times[targets[k]] = Math.max(Math.round(audio.currentTime * 100) / 100, prev + 0.01);
+      k++;
+      paint();
+    }
+    tap.onclick = doTap;
+    undo.onclick = () => {
+      if (!k) return;
+      k--;
+      times[targets[k]] = null;
+      audio.currentTime = Math.max(0, audio.currentTime - 3);
+      paint();
+    };
+    restart.onclick = () => { times = fresh(); k = 0; audio.currentTime = 0; player.pause(); paint(); };
+    backBtn.onclick = () => editStep();
+    save.onclick = () => busyBtn(save, "Saving…", msg, async () => {
+      Object.assign(song, await saveLyrics(song.id, { lyrics: text, sync: times }));
+      msg.textContent = "Saved! Listeners now see the lyrics light up line by line.";
+      msg.className = "hint ok";
+      refreshSongs();
+    });
+    onKey = (e) => {
+      // Space = Tap (also when a button has focus: preventDefault stops it "clicking" too)
+      if (e.code === "Space" && !e.repeat && !e.target.closest?.("textarea, input")) { e.preventDefault(); doTap(); }
+    };
+    body.replaceChildren(
+      el("p", { className: "muted", style: "margin:0 0 10px;font-size:14px",
+        textContent: "Press Tap (or Space) the moment each line starts. The first tap starts the song. Made a mistake? Undo, or click a line to redo from there." }),
+      player.root, list,
+      el("div", { className: "row-btns", style: "margin-top:10px;align-items:center" }, tap),
+      el("div", { className: "row-btns", style: "margin-top:8px" }, save, undo, restart, backBtn), msg);
+    paint();
+  }
+
+  document.addEventListener("keydown", keyHandler);
+  editStep();
+}
+
+async function busyBtn(btn, label, msgEl, fn) {
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = label;
+  msgEl.textContent = ""; msgEl.className = "hint";
+  try { await fn(); }
+  catch (e) { console.error(e); msgEl.textContent = friendlyError(e); msgEl.className = "hint bad"; }
+  finally { btn.disabled = false; btn.textContent = old; }
 }
 
 renderProfile();
