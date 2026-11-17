@@ -125,7 +125,7 @@ function renderCredits() {
     const who = el("div", { className: "who" },
       c.artistId ? avatar({ name: c.name, avatar_media_id: c.avatarMediaId ?? (c.locked ? me.avatar_media_id : null) }, { size: 32 }) : null,
       el("span", { className: "name", textContent: c.name }),
-      el("span", { className: "tag", textContent: c.locked ? "You" : c.artistId ? "On ProArtists" : "Name only" }),
+      el("span", { className: "tag", textContent: c.locked ? "You" : c.artistId ? "On ProArtists" : "Not on ProArtists" }),
       c.locked ? null : Object.assign(el("button", { type: "button", className: "link-btn", textContent: "Remove" }), {
         onclick: () => { credits.splice(i, 1); renderCredits(); },
       }),
